@@ -46,7 +46,7 @@ class main:
                 status TEXT NOT NULL
                 ''')
             self.conn.commit()
-           
+
             self.c.execute('''CREATE TABLE IF NOT EXISTS lottery(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type_lottery VARCHAR(30) NOT NULL,
@@ -67,6 +67,15 @@ class main:
                 status text NOT NULL
             )''')
             self.conn.commit()
+
+            self.c.execute('''CREATE TABLE IF NOT EXISTS results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                draw_date DATE NOT NULL,  
+                prize_type TEXT NOT NULL, 
+                lottery_number TEXT NOT NULL,    
+                prize_amount INTEGER)''')
+            self.conn.commit()
+            
         except Exception as e:
             print(f"เกิดข้อผิดพลาด: {e}")
         finally:
@@ -1114,15 +1123,15 @@ class main:
                     if file_path:
                         self.file_path = file_path
                         img = Image.open(file_path)
-                        img = img.resize((50, 100))  # ปรับขนาดภาพให้พอดีกับหน้าจอ
-                        img_slip = ctk.CTkImage(img, size=(200, 260))
-                        show_slip = ctk.CTkLabel(self.payment_page,image=img_slip,width=200,height=260)
-                        show_slip.grid(row = 2,column = 0,sticky= 'nsew')
+                        img = img.resize((200, 280))  # ปรับขนาดภาพให้พอดีกับหน้าจอ
+                        img_slip = ctk.CTkImage(img, size=(200, 280))
+                        show_slip = ctk.CTkLabel(self.payment_page,image=img_slip,width=200,height=280,text='')
+                        show_slip.grid(row = 2,column = 0,sticky= 'nsew',pady = 5,padx = 100 )
                         
                         confirm_btn = ctk.CTkButton(self.payment_page,text='ยืนยันการชำระเงิน',font=('Prompt',14)
                                                     ,height=40,width=20,
                                                     command=self.clear_stock)
-                        confirm_btn.grid(row =3,column = 0,sticky= 'nsew')
+                        confirm_btn.grid(row =3,column = 0,sticky= 'nsew',pady = 5,padx = 100 )
                 
                 if qr_image_base64:  # ตรวจสอบว่ามีข้อมูล Base64
                     # 3. แสดงหน้าชำระเงิน
@@ -1134,12 +1143,12 @@ class main:
                     if OR_IMG:
                         QR_LABEL = tk.Label(self.payment_page, image=OR_IMG)
                         QR_LABEL.image = OR_IMG  # เก็บอ้างอิงเพื่อไม่ให้ภาพถูกเก็บขยะ
-                        QR_LABEL.grid(row = 0,column=0,sticky= 'nsew')
+                        QR_LABEL.grid(row = 0,column=0,sticky= 'nsew',pady = 5,padx = 100 )
                         
                         file_btn = ctk.CTkButton(self.payment_page,text='แนบสลิป', font=('Kanit Regular', 16),
                                              height=40,width=20,
                                              command=select_slip)
-                        file_btn.grid(row = 1,column = 0,sticky= 'nsew')
+                        file_btn.grid(row = 1,column = 0,sticky= 'nsew',pady = 5,padx = 100 )
                         
                        
                     else:
@@ -1173,28 +1182,20 @@ class main:
         finally:
             self.conn.close()
 
-    def clear_stock(self):
-        self.conn = sqlite3.connect('data.db')
-        self.c = self.conn.cursor()
+    def clear_stock(self,order):
+        self.clear_main_con()
         try:
-        
-            self.clear_main_con()
-
+            self.conn = sqlite3.connect('data.db')
+            self.c = self.conn.cursor()
+            self.c.execute('SELECT * FROM orders WHERE User_orders = ? AND orders_lottery_num = ?', (self.username,order[1] ))
+            d= self.c.fetchall()
+            num_lottery = d[2]
+            status = d[7]
+            if  status == 'ชำระเงินแล้ว':
+                self.c.execute('INSERT INTO results() ')
             
-            self.c.execute("SELECT status FROM orders WHERE status = ?", ('ยังไม่จ่าย',))
-            d = self.c.fetchone()
-
-        
-            if d:
-                update_status = 'ชำระเงินแล้ว'
-                self.c.execute("UPDATE orders SET status = ? WHERE status = ?", (update_status, 'ยังไม่จ่าย'))
-                self.conn.commit()
-                
         except Exception as e:
-            print(f"An error occurred: {e}")
-        finally:
-            self.conn.close()
-
+            print(f"error: {e}")
         
                  
     def Mysave_page(self):
