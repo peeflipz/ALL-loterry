@@ -1225,7 +1225,6 @@ class main:
                 print("Order already paid.")
             elif status == 'ยังไม่ชำระ':
                 # แปลงภาพลอตเตอรี่เป็นไบนารี
-                img_binary_lot = None
                 if image_lottery:
                     try:
                         img = Image.open(io.BytesIO(image_lottery))
@@ -1242,7 +1241,7 @@ class main:
                         username_save, num_lottery_save, slip, amount_save, price_save, status_save, img_lottery_save
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (username, num_lottery, None, amount, price, status, img_binary_lot)
+                    (username, num_lottery, img_binary_slip, amount, price, status, img_binary_lot)
                 )
                 self.conn.commit()
 
