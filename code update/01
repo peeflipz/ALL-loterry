@@ -1036,12 +1036,12 @@ class main:
             orders_list_con.columnconfigure(i, weight=2)  # คอลัมน์ 3 ขยาย
 
             # เพิ่มปุ่มลบ พร้อมคำสั่งลบสินค้าออกจากตะกร้า
-            delete_btn = ctk.CTkButton(
-                orders_list_con, width=40, height=40, corner_radius=5,
-                text='X', font=('Prompt', 16), fg_color='#e32320', hover_color='#c20300',
-                command=self.delete_item_from_cart
-            )
-            delete_btn.grid(row=0, column=0, sticky='w', padx=5, pady=5)
+            delete_btn = ctk.CTkButton(orders_list_con, width=40, height=40, corner_radius=5,
+                                       text ='X',font=('Prompt', 16),
+                                       fg_color='#e32320',hover_color='#c20300',
+
+                                    command=lambda o=order: self.delete_item_from_cart(o))
+            delete_btn.grid(row=0, column=0, sticky='w', padx=5,pady =5)
 
             # แสดงจำนวนและราคา
             num_label = ctk.CTkLabel(orders_list_con, text=f'{num_lottery}',
@@ -1121,7 +1121,7 @@ class main:
                         
                         confirm_btn = ctk.CTkButton(self.payment_page,text='ยืนยันการชำระเงิน',font=('Prompt',14)
                                                     ,height=40,width=20,
-                                                    command=self.delete_item_from_cart)
+                                                    command=self.clear_stock)
                         confirm_btn.grid(row =3,column = 0,sticky= 'nsew')
                 
                 if qr_image_base64:  # ตรวจสอบว่ามีข้อมูล Base64
@@ -1149,57 +1149,52 @@ class main:
             else:
                 print("Failed to obtain access token.")
 
-            # 4. เมื่อชำระเงินเสร็จ ให้ปิดหน้าต่างชำระเงิน
-            if api_pay.payment_success() == price:
-                self.payment_page.destroy()
-                
-           
-             
-
             self.conn.close()
 
-
-
-    def delete_item_from_cart(self):
+    def delete_item_from_cart(self, order):
         try:
             # ลบรายการออกจากฐานข้อมูล
             self.conn = sqlite3.connect('data.db')
             self.c = self.conn.cursor()
-            self.c.execute('SELECT * FROM orders WHERE User_orders = ?',self.username)
-            data_selected = self.c.fetchall()
-            num_lottery = data_selected[1]
-            if  num_lottery:
-                self.c.execute('DELETE FROM orders WHERE User_orders = ? AND orders_lottery_num = ?', (self.username, num_lottery))
+            
+            self.c.execute('SELECT * FROM orders')
+            check_orders = self.c.fetchall()
+            
+            if check_orders != None:
+                self.c.execute('DELETE FROM orders WHERE User_orders = ? AND orders_lottery_num = ?', (self.username, order[1]))
                 self.conn.commit()
-                
-            self.c.execute("SELECT COUNT(*) FROM orders WHERE User_orders IS NOT NULL")
-            
-            d = self.c.fetchone()[0]
-            
-            if d == 0 :
+
+                # รีเฟรชหน้าตะกร้า
+                self.cart_page()
+            else:
                 self.clear_main_con()
-                label_cart = ctk.CTkLabel(self.main_con,text= 'ตะกร้าว่างเปล่า',
-                                          font=('Prompt',25),text_color='red')
-                label_cart.pack()
-              
-            
-            # รีเฟรชหน้าตะกร้า
-            self.cart_page()
         except Exception as e:
             print(f"Error deleting item: {e}")
         finally:
             self.conn.close()
 
-
-    def success_pay(self):
-        status = 'ยังไม่ชำระเงิน'
-        self.c.execute('SELECT status FROM orders WHERE status == ?',(status,))
-        d = self.c.fetchone() 
+    def clear_stock(self):
+        self.conn = sqlite3.connect('data.db')
+        self.c = self.conn.cursor()
+        try:
         
-        if d == status:
-            update_status = 'ชำระเงินแล้ว'
-            self.c.execute("INSERT INTO orders(status) VALUES(?)",( update_status,))   
-            self.conn.commit()
+            self.clear_main_con()
+
+            
+            self.c.execute("SELECT status FROM orders WHERE status = ?", ('ยังไม่จ่าย',))
+            d = self.c.fetchone()
+
+        
+            if d:
+                update_status = 'ชำระเงินแล้ว'
+                self.c.execute("UPDATE orders SET status = ? WHERE status = ?", (update_status, 'ยังไม่จ่าย'))
+                self.conn.commit()
+                
+        except Exception as e:
+            print(f"An error occurred: {e}")
+        finally:
+            self.conn.close()
+
         
                  
     def Mysave_page(self):
