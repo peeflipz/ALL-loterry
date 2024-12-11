@@ -62,17 +62,6 @@ class main:
                 status TEXT NOT NULL
             )''')
             self.conn.commit()
-
-            self.c.execute('''CREATE TABLE IF NOT EXISTS save(
-                id INTEGER PRIMARY KEY,
-                username_save TEXT NOT NULL,
-                num_lottery_save INTEGER NOT NULL,
-                slip BLOB NOT NULL,
-                amount_save INTEGER NOT NULL,
-                price_save INTEGER NOT NULL,
-                status_save TEXT NOT NULL 
-                )''')
-            self.conn.commit()
           
             self.c.execute('''CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,6 +70,18 @@ class main:
                 lottery_number TEXT NOT NULL,    
                 price_amount INTEGER     
             )''')
+            self.conn.commit()
+            
+            self.c.execute('''CREATE TABLE IF NOT EXISTS save(
+                id INTEGER PRIMARY KEY,
+                username_save TEXT NOT NULL,
+                num_lottery_save INTEGER NOT NULL,
+                img_lottery_save BLOB NOT NULL,
+                slip BLOB NOT NULL,
+                amount_save INTEGER NOT NULL,
+                price_save INTEGER NOT NULL,
+                status_save TEXT NOT NULL 
+                )''')
             self.conn.commit()
 
 
@@ -1014,7 +1015,14 @@ class main:
             # โหลดและแสดงภาพลอตเตอรี่
             try:
                 img1 = Image.open(io.BytesIO(img_lot)).resize((200, 100))
-                img_lottery = ImageTk.PhotoImage(img1)
+                self.img_lottery = ImageTk.PhotoImage(img1)
+                self.img_lottery
+              # แปลงภาพเป็นไบนารี
+                with io.BytesIO() as output:
+                    global img_binary_lot
+                    img1.save(output, format="PNG")  # บันทึกเป็น PNG ในหน่วยความจำ
+                    img_binary_lot = output.getvalue()  # ดึงข้อมูลไบนารี
+            
             except Exception as e:
                 print(f"Error loading image: {e}")
                 continue
@@ -1024,8 +1032,8 @@ class main:
             img_con.grid(row=0, column=i)
 
             # ใส่รูปภาพใน container
-            label_image = tk.Label(img_con, image=img_lottery)
-            label_image.image = img_lottery  # เก็บ reference เพื่อป้องกัน garbage collection
+            label_image = tk.Label(img_con, image=self.img_lottery)
+            label_image.image = self.img_lottery  # เก็บ reference เพื่อป้องกัน garbage collection
             label_image.place(x=100, y=50)
 
             list_label = ctk.CTkLabel(list_orders_con, text='รายการลอตเตอรี่', font=('Prompt', 16),
@@ -1189,58 +1197,128 @@ class main:
         finally:
             self.conn.close()
 
+
+
     def clear_stock(self):
         try:
-            self.payment_page.destroy() 
+            self.payment_page.destroy()
             self.conn = sqlite3.connect('data.db')
             self.c = self.conn.cursor()
 
+            # ดึงข้อมูลจากตาราง orders
             self.c.execute('SELECT * FROM orders WHERE User_orders = ?', (self.username,))
             d = self.c.fetchone()
-            
+
             if not d:
                 print("No orders found.")
                 return
-            
+
             username = d[1]
-            image_lottery = d[3]
             num_lottery = d[2]
+            image_lottery = d[3]
             amount = d[4]
             price = d[5]
             status = d[7]
-            
+
+            # ตรวจสอบสถานะ
             if status == 'ชำระเงินแล้ว':
-                pass
-
-
+                print("Order already paid.")
             elif status == 'ยังไม่ชำระ':
-                self.clear_main_con()
-                 
+                # แปลงภาพลอตเตอรี่เป็นไบนารี
+                img_binary_lot = None
+                if image_lottery:
+                    try:
+                        img = Image.open(io.BytesIO(image_lottery))
+                        img_binary_lot = io.BytesIO()
+                        img.save(img_binary_lot, format='JPEG')
+                        img_binary_lot = img_binary_lot.getvalue()
+                    except Exception as e:
+                        print(f"Error processing lottery image: {e}")
+
+                # เพิ่มข้อมูลในตาราง save
                 self.c.execute(
                     '''
                     INSERT INTO save (
-                        username_save, num_lottery_save, slip, amount_save, price_save, status_save
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        username_save, num_lottery_save, slip, amount_save, price_save, status_save, img_lottery_save
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (username, num_lottery, img_binary_slip, amount, price, status)
+                    (username, num_lottery, None, amount, price, status, img_binary_lot)
                 )
                 self.conn.commit()
-                 
-                    
-                
+
         except Exception as e:
             print(f"Error in clear_stock: {e}")
         finally:
-            self.conn.close()
+            if self.conn:
+                self.conn.close()
 
-                 
+
     def Mysave_page(self):
-        self.conn = sqlite3.connect('data.db')
-        self.c = self.conn.cursor()
-        self.changeColor_icon(self.Mysave_page,"save",self.save_btn)
+        self.changeColor_icon(self.Mysave_page, "save", self.save_btn)
         self.clear_main_con()
         self.main_container()
- 
+
+        try:
+            self.conn = sqlite3.connect('data.db')
+            self.c = self.conn.cursor()
+
+            # ดึงข้อมูลจากตาราง save
+            self.c.execute('SELECT num_lottery_save, img_lottery_save, amount_save, price_save, status_save FROM save WHERE username_save = ?', (self.username,))
+            save_data = self.c.fetchall()
+        except Exception as e:
+            print(f"Error fetching orders: {e}")
+            save_data = []
+        finally:
+            if self.conn:
+                self.conn.close()
+
+        # สร้าง Container สำหรับแสดงข้อมูล
+        self.save_page_con = ctk.CTkFrame(self.main_con, width=800, height=900, bg_color='#2b2b2b')
+        self.save_page_con.grid(row=0, column=0)
+
+        # วนลูปแสดงข้อมูลแต่ละรายการ
+        for i, save in enumerate(save_data):
+            try:
+                num_lottery, img_lot, amount, price, status = save
+
+                # แปลงภาพจากไบนารี
+                img_lottery = None
+                if img_lot:
+                    try:
+                        img1 = Image.open(io.BytesIO(img_lot)).resize((200, 100))
+                        img_lottery = ImageTk.PhotoImage(img1)
+                    except Exception as e:
+                        print(f"Error loading image: {e}")
+
+                # สร้าง Frame สำหรับรายการ
+                self.save_list_con = ctk.CTkFrame(self.save_page_con, width=700, height=100, bg_color='#2b2b2b')
+                self.save_list_con.grid(row=i, column=0, pady=10)
+
+                # ใส่รูปภาพ
+                if img_lottery:
+                    label_image = tk.Label(self.save_list_con, image=img_lottery)
+                    label_image.image = img_lottery  # เก็บ reference เพื่อป้องกัน garbage collection
+                    label_image.grid(row=0, column=0, padx=10)
+
+                # แสดงข้อมูลลอตเตอรี่
+                details_text = (
+                    f"หมายเลขลอตเตอรี่: {num_lottery}\n"
+                    f"จำนวน: {amount}\n"
+                    f"ราคา: {price}\n"
+                    f"สถานะการชำระเงิน: {status}"
+                )
+                details_label = tk.Label(
+                    self.save_list_con, text=details_text,
+                    anchor="w", justify="left",
+                    bg='#2b2b2b', fg="white"
+                )
+                details_label.grid(row=0, column=1, sticky="w")
+
+            except Exception as e:
+                print(f"Error processing save data: {e}")
+                continue
+
+
        
     def profile_page(self):
         self.conn = sqlite3.connect('data.db')
