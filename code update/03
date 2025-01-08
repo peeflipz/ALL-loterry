@@ -13,6 +13,7 @@ import uuid
 from tkinter import filedialog
 import random
 import api_payment
+import base64
 
 class main:
     def __init__(self, root):
@@ -81,6 +82,7 @@ class main:
                 amount_save INTEGER NOT NULL,
                 price_save INTEGER NOT NULL,
                 status_save TEXT NOT NULL,
+                slip_order  BLOB NOT NULL,
                 order_code TEXT NOT NULL
 
                 )''')
@@ -94,6 +96,7 @@ class main:
                 total_price INTEGER NOT NULL    
                     
                     )''')
+            self.conn.commit()
 
 
         except Exception as e:
@@ -924,30 +927,28 @@ class main:
 
 
     def add_cart(self, num_lottery, img_data, amount_selected, price_data):
-        # เชื่อมต่อกับฐานข้อมูล
-        self.conn = sqlite3.connect('data.db')
-        self.c = self.conn.cursor()
-
         try:
+            # เชื่อมต่อกับฐานข้อมูล
+            self.conn = sqlite3.connect('data.db')
+            self.c = self.conn.cursor()
+
             amount = int(amount_selected)
             username = self.username  
+
+            # ค่าเริ่มต้นสำหรับ total_price
+            total_price = 0
+
+            # ตรวจสอบว่ามีข้อมูลในตาราง orders
             self.c.execute('SELECT * FROM orders WHERE orders_lottery_num = ? AND User_orders = ?', 
                         (num_lottery, username))
             order = self.c.fetchone()
-            
-            self.c.execute('SELECT * FROM code_order WHERE User_orders = ?', (username,))
-            code_order_data = self.c.fetchone
+            if order:
+                new_amount = order[4] + amount
+                price_order = new_amount * price_data
+                total_price = price_order +  total_price 
+                print(total_price)
 
-            if  order:
-                new_amount =  order[3] +amount
-                price_order = new_amount*price_data
-                
-                total_price = 0
-                total_price =price_order+total_price
-                
-                order_code = str(uuid.uuid4())[:6]
-
-                #อัพเดตราคาเมื่อหบยิบหวยหลายชุด
+                # อัพเดตตาราง orders
                 self.c.execute('''
                     UPDATE orders 
                     SET img_lottery_orders = ?, 
@@ -956,39 +957,27 @@ class main:
                         cash = ?, 
                         status = ?
                     WHERE orders_lottery_num = ? AND User_orders = ?
-                ''', (img_data, new_amount, price_order,0, 'ยังไม่ชำระ', num_lottery, username))
-                
-                #อัพเดตราคารวมทั้งหมด
-                self.c.execute('''
-                    UPDATE code_order
-                    SET total_price = ?,
-                    code_key = ?
-                    WHERE  code_key = ?,  AND User_orders = ?
-                ''', (total_price,order_code,username))
+                ''', (img_data, new_amount, int(price_order), 0, 'ยังไม่ชำระ', num_lottery, username))
+                self.conn.commit()
+
             else:
-                # ถ้าไม่พบรายการ ให้เพิ่มรายการใหม่
+                # เพิ่มรายการใหม่ในตาราง orders
                 self.c.execute('''
                     INSERT INTO orders (User_orders, orders_lottery_num, img_lottery_orders, amount_orders, price_orders, cash, status) 
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (username,num_lottery,img_data,amount,price_data, 0, 'ยังไม่ชำระ'))
+                ''', (username, num_lottery, img_data, amount, price_data, 0, 'ยังไม่ชำระ'))
 
-                # ยืนยันการเปลี่ยนแปลงในฐานข้อมูล
                 self.conn.commit()
                 
-                self.c.execute('''
-                    INSERT INTO code_order (user_id,code_key,total_price) 
-                    VALUES (?, ?, ?)
-                ''', (username, order_code,total_price))
-
-                # ยืนยันการเปลี่ยนแปลงในฐานข้อมูล
-                self.conn.commit()               
-                
+            
             tkinter.messagebox.showinfo("Success", "เพิ่มล็อตเตอรี่ลงในตะกร้าเรียบร้อยแล้ว!")
 
         except Exception as e:
             print(f"Error adding to cart: {e}")
+
         finally:
             self.conn.close()
+
     
     def cart_page(self):
         global cart_order_con
@@ -1056,10 +1045,13 @@ class main:
                 cart_order_scroll_frame._parent_canvas.yview_scroll(-1 * (event.delta // 120), "units")
 
             cart_order_scroll_frame.bind_all("<MouseWheel>", on_mouse_scroll)
+            
+            self.total_price = 0
 
             # แสดงรายการสินค้าในตะกร้า
             for i, order in enumerate(orders_data):
                 username_data, num_lottery, img_lot, amount, price, cash, status = order
+                self.total_price += float(price)
 
                 # โหลดและแสดงภาพลอตเตอรี่
                 try:
@@ -1118,7 +1110,7 @@ class main:
                                                 text_color='black', anchor='w')
                 total_price_text.grid(row=1, column=0, sticky='w', padx=10, pady=10)
 
-                total_price_label = ctk.CTkLabel( list_orders_con, text=f'{price} บาท',
+                total_price_label = ctk.CTkLabel( list_orders_con, text=f'{self.total_price} บาท',
                                                 font=('Prompt', 16),
                                                 text_color='black', anchor='e')
                 total_price_label.grid(row=1, column=1, sticky='e', padx=10, pady=10)
@@ -1167,7 +1159,7 @@ class main:
             if access_token:
                 # ข้อมูลสำหรับการสร้าง QR Code
                 biller_id = "838570584253024"  # รหัส Biller
-                price = d[5]  # จำนวนเงิน ควรตรวจสอบดัชนีของ d ก่อนใช้
+                price = self.total_price   # จำนวนเงิน ควรตรวจสอบดัชนีของ d ก่อนใช้
                 ref1 = "TESTREF1"  # หมายเลขอ้างอิง
                 ref2 = "TESTREF2"  # หมายเลขอ้างอิง
 
@@ -1269,11 +1261,10 @@ class main:
             if not d:
                 print("No orders found.")
                 return
+            
+            code_key = str(uuid.uuid4())[:6]            
 
-            order_code = str(uuid.uuid4())[:6]  # สร้างรหัสสั่งซื้อสุ่ม 6 ตัว
             for row in d:
-
-
                 # ดึงค่าจากแถว
                 username = row[1]
                 num_lottery = row[2]
@@ -1294,27 +1285,19 @@ class main:
                     except Exception as e:
                         print(f"Error processing lottery image: {e}")
 
+                
                 # เพิ่มข้อมูลในตาราง save
                 self.c.execute(
                     '''
                     INSERT INTO save (
-                        username_save, num_lottery_save, slip, amount_save, price_save, status_save, img_lottery_save, order_code
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        username_save, num_lottery_save, amount_save, price_save, status_save, img_lottery_save,slip_order, order_code
+                    ) VALUES (?, ?,?, ?, ?, ?, ?, ?)
                     ''',
-                    (username, num_lottery, img_binary_slip, amount, price, status, img_binary_lot, order_code)
+                    (username, num_lottery, amount, price, status, img_binary_lot,img_binary_slip, code_key)
                 )
                 self.conn.commit()
-                
-                self.c.execute(
-                    '''
-                    INSERT INTO code_order (
-                        username_save, num_lottery_save, slip, amount_save, price_save, status_save, img_lottery_save, order_code
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (username, num_lottery, img_binary_slip, amount, price, status, img_binary_lot, order_code)
-                )
-                self.conn.commit()                
-                
+                  
+                    
                 
             self.c.execute(
             'DELETE FROM orders WHERE User_orders = ? AND status = ?',
