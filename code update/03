@@ -1595,10 +1595,61 @@ class main:
                 elif status == 'การชำระไม่ถูกต้อง':
                     edit_slip_btn = ctk.CTkButton(save_list_con, text='แก้ไขข้อมูล', font=('Prompt', 14), fg_color='red', command=edit_slip)
                     edit_slip_btn.grid(row=i, column=3, padx=100, pady=10, sticky='nsew')
+                    
+                elif status == 'ไม่ถูกรางวัล': 
+                    label_status = ctk.CTkLabel(save_list_con, text=f"{win_prize}", font=('Kanit Regular', 16), text_color='#b94a48', bg_color='white')
+                    label_status.grid(row=i, column=3, padx=100, pady=10, sticky='nsew')
+                elif status == 'ถูกรางวัล': 
+                    label_status = ctk.CTkLabel(save_list_con, text=f"{win_prize}", font=('Kanit Regular', 16), text_color='#468847', bg_color='white')
 
             except Exception as e:
                 print(f"Error processing save data: {e}")
                 continue
+    def auto_check_prize(self):
+        try:
+            self.conn = sqlite3.connect('data.db')
+            self.c = self.conn.cursor()
+            
+            # ดึงผลลัพธ์จากตาราง `results`
+            self.c.execute('''SELECT prize_type, lottery_number FROM results''')
+            results = self.c.fetchall()
+            
+            print(f"Results: {results}")
+
+            # ดึงข้อมูลหมายเลขลอตเตอรี่ที่ผู้ใช้เก็บไว้จากตาราง save
+            self.c.execute('''SELECT id, username_save, num_lottery_save, amount_save, price_save, status_save, order_code, win_prize, lottery_date FROM save''')
+            save_data = self.c.fetchall()  
+
+            # วนลูปเพื่อตรวจสอบผลลอตเตอรี่
+            for prize_type, num_result in results:  # วนลูปผ่านแต่ละผลลัพธ์
+                print(f"Checking result for lottery: {num_result} with prize: {prize_type}")
+                
+                # วนลูปผ่าน save_data เพื่อตรวจสอบว่าแต่ละหมายเลขที่ผู้ใช้เก็บไว้ตรงกับผลที่ออกหรือไม่
+                for save_item in save_data:
+                    num_lottery_save = save_item[2]  # ดึงหมายเลขลอตเตอรี่ที่ผู้ใช้เก็บไว้
+                    
+                    if num_result == num_lottery_save:
+                        # ถ้ามีหมายเลขลอตเตอรี่ตรงกับที่เก็บไว้ใน save
+                        self.c.execute(
+                            '''UPDATE save SET win_prize = ? WHERE num_lottery_save = ?''',
+                            (prize_type, num_result)  # แก้ไขรางวัลที่ผู้ใช้ถูกรางวัล
+                        )
+                        print(f"User with lottery {num_result} wins: {prize_type}")
+                    else:
+                        # ถ้าไม่ตรงกัน กำหนดว่าไม่ถูกรางวัล
+                        self.c.execute(
+                            '''UPDATE save SET win_prize = ? WHERE num_lottery_save = ?''',
+                            ('ไม่ถูกรางวัล', num_lottery_save)
+                        )
+                        print(f"User with lottery {num_lottery_save} did not win.")
+            
+            self.conn.commit()
+            
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            self.conn.close()
+
 
             
     def request_receipt(self, order_code, save_data):
@@ -3568,6 +3619,10 @@ class main:
 
         delete_btn = ctk.CTkButton(whiteframebg, text="ลบข้อมูล", font=('Kanit Regular', 16), fg_color='black', command=self.delete_save)
         delete_btn.place(x=180, y=420)
+        
+        check_btn = ctk.CTkButton(whiteframebg, text="ตรวจลอตเตอรี่", font=('Kanit Regular', 16), fg_color='black', command=self.auto_check_prize)
+        check_btn.place(x=380, y=420)
+        
 
         back_btn = ctk.CTkButton(whiteframebg, text="กลับ", font=('Kanit Regular', 16), fg_color='black', command=self.admin_page)
         back_btn.place(x=650, y=420)
