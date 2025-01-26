@@ -1714,6 +1714,22 @@ class main:
                         command=lambda order_code=order_code, save_data=save_data: self.request_receipt(order_code, save_data)
                     )
                     request_receipt_btn.grid(row=3, column=0, padx=150, pady=10, sticky="w")
+                elif status =='โอนเงินแล้ว':
+                    self.c.execute('''SELECT slip_order FROM save WHERE status_save  = ?''', ('โอนเงินแล้ว'))
+                    slip_success = self.c.fetchone()
+                    
+                     # แปลงภาพจากไบนารี
+                    img_slip = None
+                    if  slip_success :
+                        try:
+                            img1 = Image.open(io.BytesIO( slip_success )).resize((200, 280))
+                            img_slip = ImageTk.PhotoImage(img1)
+                        except Exception as e:
+                            print(f"Error loading image: {e}")
+                        
+                    
+                    success_tranfer_label.configure(self.status_tranfer_page,image=img_slip)
+                    success_tranfer_label.pack(pady=10)
 
 
             except Exception as e:
@@ -1723,9 +1739,9 @@ class main:
     def status_tranfer_prizes(self):
         self.status_tranfer_page = tk.Toplevel(self.store)
         self.status_tranfer_page.geometry('400x600')
-        
-        status_label = ctk.CTkLabel(self.status_tranfer_page, text="รอแอดมินโอนเงิน", font=('Kanit Regular', 20), text_color='black')
-        status_label.pack(pady=200)
+        global success_tranfer_label
+        success_tranfer_label= ctk.CTkLabel(self.status_tranfer_page, text="รอแอดมินโอนเงิน", font=('Kanit Regular', 20), text_color='black')
+        success_tranfer_label.pack(pady=200)
         pass
 
     def update_slip_status(self, order_code, img_binary_slip1):
