@@ -1442,9 +1442,7 @@ class main:
                         img_binary_lot = img_binary_lot.getvalue()
                     except Exception as e:
                         print(f"Error processing lottery image: {e}")
-                        
-                if d:
-                    self.c.execute('''UPDATE save SET slip_order = ? WHERE order_code = ? ''')        
+      
 
                 # กำหนดค่า img_binary_slip ให้เป็นไฟล์สลิปที่แนบมา หรือค่าว่างถ้าไม่มีสลิป
                 if 'img_binary_slip' in globals() and img_binary_slip:  # ตรวจสอบว่ามีการกำหนดค่าสลิปหรือไม่
@@ -1527,31 +1525,35 @@ class main:
                     self.payment_page = tk.Toplevel(self.store)
                     self.payment_page.geometry('400x600')
                     self.payment_page.title('ชำระเงิน')
-                    global img_slip
                     file_path = filedialog.askopenfilename(
                     title="แนบสลิป",
-                    filetypes=(("JPEG files", "*.jpg"), ("All files", "*.*")))
+                    filetypes=(("JPEG files", "*.jpg"), ("All files", "*.*"))
+                )
 
                     if file_path:
-                        self.file_path = file_path
-                        img = Image.open(file_path)
-                        img = img.resize((200, 280))  # ปรับขนาดภาพให้พอดีกับหน้าจอ
-                        img_slip = ctk.CTkImage(img, size=(200, 280))
-                        
-                        # แปลงภาพเป็นไบนารี
-                        with io.BytesIO() as output:
-                            global img_binary_slip
-                            img.save(output, format="PNG")  # บันทึกเป็น PNG ในหน่วยความจำ
-                            img_binary_slip = output.getvalue()  # ดึงข้อมูลไบนารี
-                    
-                        show_slip = ctk.CTkLabel(self.payment_page,image=img_slip,width=200,height=280,text='')
-                        show_slip.grid(row = 2,column = 0,sticky= 'nsew',pady = 5,padx = 100 )
-                        
-                        confirm_btn = ctk.CTkButton(self.payment_page,text='ยืนยันการชำระเงิน',font=('Prompt',14)
-                                                    ,height=40,width=20,
-                                                    command  = self.clear_stock)
-                        confirm_btn.grid(row =3,column = 0,sticky= 'nsew',pady = 5,padx = 100 )
-        
+                        try:
+                            # โหลดและแปลงภาพเป็นไบนารี
+                            img = Image.open(file_path).resize((200, 280))
+                            img_slip = ctk.CTkImage(img, size=(200, 280))
+
+                            with io.BytesIO() as output:
+                                img.save(output, format="PNG")
+                                img_binary_slip1 = output.getvalue()
+
+                            # แสดงภาพที่แนบ
+                            show_slip = ctk.CTkLabel(self.payment_page, image=img_slip, width=200, height=280, text='')
+                            show_slip.grid(row=2, column=0, sticky='nsew', pady=5, padx=100)
+
+                            # ปุ่มยืนยัน
+                            confirm_btn = ctk.CTkButton(
+                                self.payment_page, text='ยืนยันการชำระเงิน', font=('Prompt', 14),
+                                height=40, width=20,
+                                command=lambda: self.update_slip_status(order_code, img_binary_slip1)
+                            )
+                            confirm_btn.grid(row=3, column=0, sticky='nsew', pady=5, padx=100)
+
+                        except Exception as e:
+                            print(f"Error processing slip: {e}")
 
                 # ถ้ายังไม่มี group สำหรับ order_code นี้ ให้สร้างใหม่
                 if order_code not in order_groups:
@@ -1611,6 +1613,7 @@ class main:
                 label_image = tk.Label(save_list_con, image=img_lottery, width=200, height=100)
                 label_image.image = img_lottery  # เก็บ reference เพื่อป้องกัน garbage collection
                 label_image.grid(row=i, column=0, padx=10, pady=10)
+                
                  
                 label_num = ctk.CTkLabel(save_list_con, text=num_lottery, font=('Kanit Regular', 20), text_color='black', bg_color='white',width=80)
                 label_num.grid(row=i, column=0, padx=32, pady=16, sticky='ne')
@@ -1675,8 +1678,9 @@ class main:
                     edit_slip_btn.grid(row=i, column=3, padx=80, pady=10, sticky='nsew')
                     
                 elif status == 'ถูกรางวัล':
-                    #รอการอัพเดทสลิปการโอนเงินผู้ถูกรางวัล
-                    pass
+                    label_status = ctk.CTkLabel(save_list_con, text=f"ขอแสดงความยินดี\nคุณถูกรางวัล : {win_prize}", font=('Kanit Regular', 14), text_color='#468847', bg_color='white')
+                    label_status.grid(row=i, column=3, padx=80, pady=10, sticky='nsew')
+                    
                 
                 elif status == 'ไม่ถูกรางวัล':
                     label_status = ctk.CTkLabel(save_list_con, text=f"{win_prize}", font=('Kanit Regular', 16), text_color='red', bg_color='white')
@@ -1686,7 +1690,37 @@ class main:
             except Exception as e:
                 print(f"Error processing save data: {e}")
                 continue
-            
+    def update_slip_status(self, order_code, img_binary_slip1):
+        try:
+            with sqlite3.connect('data.db') as conn:
+                c = conn.cursor()
+                
+                c.execute('''SELECT * FROM save WHERE order_code = ? AND status_save = ?'''
+                          , (order_code, 'การชำระไม่ถูกต้อง'))
+                results =c.fetchone()
+                
+                if results:
+                    c.execute(
+                        '''UPDATE save 
+                        SET slip_order = ?
+                        WHERE order_code = ? AND status_save = ?''',
+                        (img_binary_slip1, order_code, 'การชำระไม่ถูกต้อง')
+                )
+                    conn.commit()
+                    print(f"Successfully updated order: {order_code}")
+                    tk.messagebox.showinfo("สำเร็จ", f"อัปเดตสถานะสำเร็จสำหรับคำสั่งซื้อ {order_code}")
+                else:
+                    print(f"No rows updated for order_code: {order_code}")
+                    tk.messagebox.showwarning("ข้อผิดพลาด", "ไม่พบคำสั่งซื้อหรือสถานะไม่ตรงกัน")
+                self.payment_page.destroy()
+
+        except Exception as e:
+            print(f"Error updating slip status: {e}")
+            tk.messagebox.showerror("ข้อผิดพลาด", "เกิดข้อผิดพลาดขณะอัปเดตสถานะ")
+    
+    
+    
+    
     def request_receipt(self, order_code, save_data):
         # เก็บค่า order_code ไว้ในตัวแปรของคลาส
         self.order_code = order_code  
@@ -3693,7 +3727,7 @@ class main:
         OR num_lottery_save LIKE ?
         OR amount_save LIKE ?
         OR price_save LIKE ?
-        OR status_save LIKE ?
+        OR CAST(SUBSTR(status_save , 1, 1)  AS TEXT) LIKE ?
         OR order_code LIKE ?
         OR win_prize LIKE ?
         """
@@ -3919,7 +3953,7 @@ class main:
             self.c = self.conn.cursor()
 
             # ดึงผลลัพธ์จากตาราง `results`
-            self.c.execute('''SELECT prize_type, lottery_number, draw_date FROM results''')
+            self.c.execute('''SELECT prize_type, lottery_number, draw_date,prize_amount FROM results''')
             results = self.c.fetchall()
 
             if not results:
@@ -3935,15 +3969,17 @@ class main:
             # วนลูปเพื่อตรวจสอบผลลอตเตอรี่
             for save_item in save_data:
                 num_lottery_save = save_item[2]  # หมายเลขลอตเตอรี่ที่ผู้ใช้เก็บไว้
+                amount_lottery = save_item[3]  
+                price_save = save_item[4] 
                 lottery_date = save_item[8]
                 is_winner = False  # ใช้ตัวแปรเพื่อตรวจสอบว่าหมายเลขนี้ถูกรางวัลหรือไม่
 
-                for prize_type, num_result, draw_date in results:
+                for prize_type, num_result, draw_date,prize_amount in results:
                     if str(num_result) == str(num_lottery_save) and draw_date == lottery_date:
                         # ถ้าหมายเลขตรงและวันที่ตรง
                         self.c.execute(
-                            '''UPDATE save SET status_save = ?, win_prize = ? WHERE num_lottery_save = ?''',
-                            ('ถูกรางวัล', prize_type, num_lottery_save)
+                            '''UPDATE save SET status_save = ?, win_prize = ?,amount_save = ? ,price_save = ?  WHERE num_lottery_save = ?''',
+                            ('ถูกรางวัล', prize_type,amount_lottery,(prize_amount), num_lottery_save)  # อัพเดตสถานะเป็น "ถูกรางวัล" และกำหนดรางวัลที่ถูกรางวัล
                         )
                         print(f"User with lottery {num_lottery_save} wins: {prize_type}")
                         is_winner = True
